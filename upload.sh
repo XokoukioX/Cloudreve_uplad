@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # 检查输入参数
-if [ "$#" -ne 2 ] && [ "$#" -ne 3 ]; then
-    echo "Usage: $0 <file_path> <upload_path> [--debug]"
+if [ "$#" -ne 2 ]; then
+    echo "Usage: $0 <file_path> <upload_path>"
     exit 1
 fi
 
@@ -15,11 +15,8 @@ username=""  # 替换为你的用户名
 password=""  # 替换为你的密码
 server_url=""  # 替换为你的服务器地址
 
-# 调试标志
+# 调试标志，默认开启调试
 DEBUG=false
-if [ "$#" -eq 3 ] && [ "$3" == "--debug" ]; then
-    DEBUG=true
-fi
 
 # 打印调试信息的函数
 debug_echo() {
@@ -100,7 +97,7 @@ if [ -z "$si" ] || [ "$si" == "null" ]; then
     code=$(echo "$upload_init_response" | jq -r .code)
     if [ "$code" == "40054" ]; then
         echo "An existing upload session was detected. Attempting to clean up existing session..."
-        
+
         # 执行删除请求以清理现有会话
         cleanup_response=$(curl -s --location --request DELETE "$server_url/api/v3/file/upload" \
         --header "Cookie: cloudreve-session=$cloudreve_session" \
@@ -149,16 +146,22 @@ split -b $chunk_size "$file_path" "$temp_dir/chunk_"
 # 计算总分片数
 total_chunks=$(ls "$temp_dir" | wc -l)
 
+# 在屏幕特定位置输出准备信息
+echo -e "\n准备上传文件: $name"
+echo "文件大小: $size 字节"
+echo "总分块数: $total_chunks"
+echo -e "\n上传进度:"
+
 # 上传进度条函数
 show_progress() {
     local current=$1
     local total=$2
-    local percent=$(( $current * 100 / $total ))
-    local filled_length=$(( $percent * 50 / 100 ))
-    local bar=$(printf "%-${filled_length}s" "#" | tr ' ' '#')
+    local percent=$(( current * 100 / total ))
+    local filled_length=$(( percent * 50 / 100 ))
+    local bar=$(printf "%-${filled_length}s" '#' | tr ' ' '#')
     local empty_bar=$(printf "%-$((50 - filled_length))s" '' | tr ' ' '.')
-    # 移动光标到屏幕底部，然后打印进度条
-    printf "\033[${LINES};0H[${bar}${empty_bar}][${percent}%%]"
+    # 保持在最后一行打印进度条
+    printf "\033[${LINES};0H[${bar}${empty_bar}][${percent}%%] (已上传分块: $current/$total)"
 }
 
 upload_chunk() {
@@ -167,7 +170,7 @@ upload_chunk() {
         --header "Cookie: cloudreve-session=$cloudreve_session" \
         --header 'Content-Type: application/octet-stream' \
         --data-binary "@$1")
-    
+
     debug_echo "Upload Chunk Response: $response"
     if [ $(echo "$response" | jq -r .code) -ne 0 ]; then
         echo "Chunk $2 upload failed! Response: $response"
@@ -178,6 +181,7 @@ upload_chunk() {
     show_progress $(( ++upload_index )) $total_chunks
 }
 
+# 上传所有分块
 upload_index=0
 for chunk in "$temp_dir"/chunk_*; do
     upload_chunk "$chunk" "$upload_index"
@@ -185,4 +189,10 @@ done
 
 # 清理临时文件夹
 rm -rf "$temp_dir"
-echo -e "\nUpload completed!"
+
+# 上传完成后输出总结
+echo -e "\n上传完成！"
+echo "文件名: $name"
+echo "文件大小: $size 字节"
+echo "总分块数: $total_chunks"
+echo "成功上传分块数: $upload_index"
