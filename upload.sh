@@ -16,7 +16,7 @@ password=""  # 替换为你的密码
 server_url=""  # 替换为你的服务器地址
 
 # 调试标志，默认开启调试
-DEBUG=false
+DEBUG=true
 
 # 打印调试信息的函数
 debug_echo() {
